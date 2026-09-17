@@ -62,6 +62,14 @@ def generate_launch_description():
         ],
     )
 
+    camera_relay = Node(
+        package='maze_bot',
+        executable='camera_relay.py',
+        name='camera_relay',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument(
             'model',
@@ -75,5 +83,6 @@ def generate_launch_description():
         maze_world,
         robot_state_publisher,
         bridge,
+        camera_relay,
         TimerAction(period=3.0, actions=[spawn_robot]),
     ])

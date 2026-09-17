@@ -30,6 +30,7 @@ CONTROLS = [
     ('空格', '立即停止'),
     ('F12', '暂停 / 恢复遥控'),
     ('+ / -', '加快 / 减慢速度'),
+    ('c', '相机开关'),
     ('q', '退出遥控（终端）'),
     ('按钮 / E', '窗口内开启 / 暂停遥控'),
 ]
@@ -44,6 +45,7 @@ STATUS_ROWS = [
     ('wheels', '轮速 FL/FR/RL/RR (m/s)'),
     ('cmd', '指令线速度 (m/s)'),
     ('cmd_omega', '指令角速度 (rad/s)'),
+    ('camera', '相机'),
 ]
 
 USAGE_LINES = [
@@ -68,6 +70,8 @@ class RobotState(Node):
         self.odom_stamp = 0.0
         self.teleop_armed = None
         self.teleop_stamp = 0.0
+        self.camera_enabled = None
+        self.camera_stamp = 0.0
         self.running = True
 
         self.create_subscription(Odometry, '/odom', self.on_odom, 10)
@@ -76,6 +80,7 @@ class RobotState(Node):
                                  self.on_steering_cmd, 10)
         self.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
         self.create_subscription(Bool, '/teleop_state', self.on_teleop_state, 10)
+        self.create_subscription(Bool, '/camera_state', self.on_camera_state, 10)
         self.enable_pub = self.create_publisher(Bool, '/teleop_enable', 10)
 
     def on_odom(self, msg):
@@ -107,6 +112,13 @@ class RobotState(Node):
     def on_teleop_state(self, msg):
         self.teleop_armed = bool(msg.data)
         self.teleop_stamp = time.monotonic()
+
+    def on_camera_state(self, msg):
+        self.camera_enabled = bool(msg.data)
+        self.camera_stamp = time.monotonic()
+
+    def camera_connected(self):
+        return (time.monotonic() - self.camera_stamp) < 2.0
 
     def connected(self):
         return (time.monotonic() - self.odom_stamp) < 1.0
@@ -277,6 +289,10 @@ class DashboardApp:
             f'{wheels.get(name, 0.0):.2f}' for name in ('FL', 'FR', 'RL', 'RR')))
         self.set_row('cmd', f'{node.cmd_linear:+.3f}')
         self.set_row('cmd_omega', f'{node.cmd_omega:+.3f}')
+        if not node.camera_connected():
+            self.set_row('camera', '未连接')
+        else:
+            self.set_row('camera', '开启' if node.camera_enabled else '关闭')
 
         self.root.after(100, self.update)
 

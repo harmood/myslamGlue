@@ -26,7 +26,7 @@ HELP = """
   前后移动： w / ↑ 前进      s / ↓ 后退
   前轮转向： a / ← 左转      d / → 右转
   空格 立即停止          q 退出
-  + / - 加快 / 减慢速度
+  + / - 加快 / 减慢速度   c 相机开关
 --------------------------------------------------"""
 
 KITTY_FLAGS = 11  # disambiguate(1) | report event types(2) | report all keys(8)
@@ -131,6 +131,8 @@ class MazeTeleop(Node):
         self.declare_parameter('arm_key', 88)
         self.declare_parameter('enable_topic', '/teleop_enable')
         self.declare_parameter('state_topic', '/teleop_state')
+        self.declare_parameter('camera_enable_topic', '/camera_enable')
+        self.declare_parameter('camera_state_topic', '/camera_state')
 
         self.linear_speed = float(self.get_parameter('linear_speed').value)
         self.max_steering = float(self.get_parameter('max_steering').value)
@@ -161,6 +163,12 @@ class MazeTeleop(Node):
             Bool, self.get_parameter('state_topic').value, 10)
         self.create_subscription(Bool, self.get_parameter('enable_topic').value,
                                  self.on_enable, 10)
+        self.camera_enable_publisher = self.create_publisher(
+            Bool, self.get_parameter('camera_enable_topic').value, 10)
+        self.create_subscription(
+            Bool, self.get_parameter('camera_state_topic').value,
+            self.on_camera_state, 10)
+        self.camera_enabled = True
         self.create_timer(1.0, self.publish_state)
         self.twist = Twist()
         self.linear_cmd = 0.0
@@ -269,6 +277,17 @@ class MazeTeleop(Node):
         if bool(msg.data) != self.armed:
             self.set_armed(bool(msg.data))
 
+    def on_camera_state(self, msg):
+        self.camera_enabled = bool(msg.data)
+
+    def toggle_camera(self):
+        self.camera_enabled = not self.camera_enabled
+        msg = Bool()
+        msg.data = self.camera_enabled
+        self.camera_enable_publisher.publish(msg)
+        self.get_logger().info(
+            '相机已开启' if self.camera_enabled else '相机已关闭')
+
     # ---------- 事件处理 ----------
 
     def move_legacy(self, channel, sign):
@@ -310,6 +329,8 @@ class MazeTeleop(Node):
             self.move_legacy('angular', 1.0)
         elif char in ('d', 'D', '\uff44', '\uff24'):
             self.move_legacy('angular', -1.0)
+        elif char in ('c', 'C', '\uff43', '\uff23'):
+            self.toggle_camera()
         elif char in (' ', '\u3000'):
             self.stop_all()
         elif char in ('+', '=', '\uff0b', '\uff1d'):
@@ -330,7 +351,9 @@ class MazeTeleop(Node):
             return
         if not self.armed:
             return
-        if keycode in LINEAR_KEYS:
+        if keycode == 99 and pressed:
+            self.toggle_camera()
+        elif keycode in LINEAR_KEYS:
             self.move_kitty('linear', keycode, LINEAR_KEYS[keycode], pressed)
         elif keycode in ANGULAR_KEYS:
             self.move_kitty('angular', keycode, ANGULAR_KEYS[keycode], pressed)
@@ -356,6 +379,8 @@ class MazeTeleop(Node):
             self.move_kitty('linear', code, EVDEV_LINEAR[code], pressed)
         elif code in EVDEV_ANGULAR:
             self.move_kitty('angular', code, EVDEV_ANGULAR[code], pressed)
+        elif code == 46 and pressed:
+            self.toggle_camera()
         elif code == EVDEV_SPACE and pressed:
             self.stop_all()
         elif code in EVDEV_SPEED_UP and pressed:

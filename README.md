@@ -50,6 +50,8 @@ myslam_ws/
         │   └── spawn_maze.launch.py # 迷宫世界 + 生成小车（默认）
         ├── rviz/
         │   └── maze_bot.rviz
+        ├── scripts/
+        │   └── camera_relay.py      # 相机中继（开关控制）
         └── urdf/
             └── maze_bot.urdf.xacro
     └── maze_teleop/
@@ -113,6 +115,7 @@ ros2 launch maze_gui dashboard.launch.py         # 终端 3：GUI 控制台（�
 | 轮子 | 半径 0.05 m、宽 0.04 m，共 4 个（0.05 kg/个） |
 | 轮距 / 轴距 | 0.28 m / 0.30 m |
 | 前轮最大转角 | ±0.6 rad（遥控默认限幅 0.5 rad） |
+| 车头相机 | 640×480 @ 15 Hz，水平 FOV 60°，安装于车头 (0.19, 0, 0.02) |
 | 生成位置 | 起点 (-4.80, -4.80)，朝向 +x |
 | 后轮驱动插件 | `gz-sim-diff-drive-system`（仅后轮） |
 | 前轮转向插件 | `gz-sim-joint-position-controller-system` |
@@ -126,6 +129,10 @@ ROS 话题（经 `config/ros_gz_bridge.yaml` 桥接）：
 | `/odom` | `nav_msgs/msg/Odometry` | Gazebo → ROS | 轮式里程计（50 Hz） |
 | `/tf` | `tf2_msgs/msg/TFMessage` | Gazebo → ROS | odom → base_footprint |
 | `/joint_states` | `sensor_msgs/msg/JointState` | Gazebo → ROS | 关节状态（含转向关节，RViz 模型显示用） |
+| `/camera/image_raw` | `sensor_msgs/msg/Image` | Gazebo → ROS | 车头相机原始图像（640×480 rgb8，15 Hz） |
+| `/camera/image` | `sensor_msgs/msg/Image` | 中继转发 | 相机中继输出（受相机开关控制），RViz 显示用 |
+| `/camera_enable` | `std_msgs/msg/Bool` | ROS 内部 | 相机开关指令（true 开 / false 关） |
+| `/camera_state` | `std_msgs/msg/Bool` | ROS 内部 | 相机开关状态（每秒上报） |
 | `/clock` | `rosgraph_msgs/msg/Clock` | Gazebo → ROS | 仿真时钟 |
 
 驱动示例：
@@ -198,7 +205,7 @@ ros2 launch maze_teleop teleop.launch.py input_mode:=terminal
 | `w` / ↑ | 前进（后轮驱动） | `s` / ↓ | 后退（后轮驱动） |
 | `a` / ← | 前轮左转向 | `d` / → | 前轮右转向 |
 | 空格 | 立即停止 | `q` | 退出 |
-| `+` / `-` | 加快 / 减慢速度 | | |
+| `+` / `-` | 加快 / 减慢速度 | `c` | 相机开关 |
 
 `a`/`d` 直接控制前轮转向关节：按住时转角平滑转到最大角（默认 0.5 rad，速率 2.0 rad/s），松开自动回正；与 `w`/`s` 组合即为弧线行驶。转向角与后轮差速的换算由遥控节点按轴距自动完成。
 
@@ -246,7 +253,7 @@ ros2 launch maze_gui dashboard.launch.py
 - **操控方法**：完整按键说明（前后、转向、急停、F12 暂停、调速、退出、GUI 遥控开关）与常用启动命令
 - **遥控开关**：右上角按钮（或窗口内按 `E` 键）可开启 / 暂停遥控，状态显示"已开启 / 已暂停 / 未连接"，也可用 `F12` 全局切换。开关通过 `/teleop_enable`（`std_msgs/msg/Bool`）下发，遥控节点以 `/teleop_state` 每秒上报当前状态
 - **小车状态**（约 10 Hz 刷新，以表格形式展示；窗口启动时按内容自动定尺并居中，无需手动调整大小）：
-  - 表格行：线速度、角速度、位置 (x, y)、航向角、前轮转角、转角指令、四轮轮速、指令线速度、指令角速度
+  - 表格行：线速度、角速度、位置 (x, y)、航向角、前轮转角、转角指令、四轮轮速、指令线速度、指令角速度、相机开关状态
   - 表格上方状态：仿真连接状态（依据 `/odom` 是否在 1 秒内更新）、遥控状态与开关按钮
 
 订阅话题：`/odom`、`/joint_states`、`/steering_position`、`/cmd_vel`、`/teleop_state`；发布 `/teleop_enable`。
@@ -255,7 +262,8 @@ ros2 launch maze_gui dashboard.launch.py
 
 - 主场景（`spawn_maze.launch.py`）会同时启动 RViz，使用 `maze_world/rviz/maze.rviz`；单独查看小车模型用 `maze_bot display.launch.py`（`maze_bot.rviz`，固定坐标系 `base_footprint`）
 - 主场景 RViz 的固定坐标系为 `maze_bot/odom`（当前 TF 树中实际存在的坐标系）
-- Grid / TF / RobotModel 默认启用；LaserScan、PointCloud2、Map、Path 已预配置好话题（`/scan`、`/cloud_registered`、`/map`、`/path`）但**默认禁用**，避免数据源未就绪时报错；接入传感器或 SLAM 后在 Displays 面板勾选启用即可
+- Grid / TF / RobotModel / Camera 默认启用（Camera 为车头相机实时画面，话题 `/camera/image`）；LaserScan、PointCloud2、Map、Path 已预配置好话题
+- 相机渲染在启动后需要数十秒初始化（本机为软件渲染），期间 Camera 显示暂无画面，稍候即可（`/scan`、`/cloud_registered`、`/map`、`/path`）但**默认禁用**，避免数据源未就绪时报错；接入传感器或 SLAM 后在 Displays 面板勾选启用即可
 - 接入 SLAM 后可将 Fixed Frame 切换为 `map`
 
 ## 关闭方式
