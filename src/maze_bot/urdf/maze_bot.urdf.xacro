@@ -1,0 +1,208 @@
+<?xml version="1.0"?>
+<robot name="maze_bot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- ========== 材质 ========== -->
+  <material name="dark_grey">
+    <color rgba="0.2 0.2 0.2 1.0"/>
+  </material>
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+  <material name="light_grey">
+    <color rgba="0.7 0.7 0.7 1.0"/>
+  </material>
+
+  <!-- ========== 尺寸 / 质量参数 ========== -->
+  <xacro:property name="body_length" value="0.40"/>
+  <xacro:property name="body_width"  value="0.25"/>
+  <xacro:property name="body_height" value="0.10"/>
+  <xacro:property name="body_mass"   value="1.0"/>
+
+  <xacro:property name="wheel_radius"   value="0.05"/>
+  <xacro:property name="wheel_width"    value="0.04"/>
+  <xacro:property name="wheel_mass"     value="0.05"/>
+  <xacro:property name="wheel_x_offset" value="0.15"/>
+  <xacro:property name="wheel_y_offset" value="0.14"/>
+  <xacro:property name="base_z"         value="${wheel_radius + body_height / 2}"/>
+
+  <!-- ========== 惯量计算宏 ========== -->
+  <xacro:macro name="box_inertia" params="mass x y z">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass * (y * y + z * z) / 12}" ixy="0" ixz="0"
+               iyy="${mass * (x * x + z * z) / 12}" iyz="0"
+               izz="${mass * (x * x + y * y) / 12}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- 圆柱轴沿惯性系 z 轴；配合 rpy 旋转 90° 后轴沿 link 的 y 轴 -->
+  <xacro:macro name="cylinder_inertia" params="mass radius length">
+    <inertial>
+      <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+      <mass value="${mass}"/>
+      <inertia ixx="${mass * (3 * radius * radius + length * length) / 12}" ixy="0" ixz="0"
+               iyy="${mass * (3 * radius * radius + length * length) / 12}" iyz="0"
+               izz="${mass * radius * radius / 2}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- ========== base_footprint（dummy 根 link） ========== -->
+  <link name="base_footprint"/>
+
+  <!-- ========== base_link 躯干（长方体） ========== -->
+  <link name="base_link">
+    <xacro:box_inertia mass="${body_mass}" x="${body_length}" y="${body_width}" z="${body_height}"/>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${body_length} ${body_width} ${body_height}"/>
+      </geometry>
+      <material name="dark_grey"/>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${body_length} ${body_width} ${body_height}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- base_link 中心距地面 = 轮子半径 + 半个车身高度 -->
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child  link="base_link"/>
+    <origin xyz="0 0 ${base_z}" rpy="0 0 0"/>
+  </joint>
+
+  <!-- ========== 通用轮子宏 ========== -->
+  <!-- 轮子：cylinder radius=0.05m length=0.04m，轴沿 y 方向 -->
+  <xacro:macro name="wheel_link" params="name">
+    <link name="${name}">
+      <xacro:cylinder_inertia mass="${wheel_mass}" radius="${wheel_radius}" length="${wheel_width}"/>
+
+      <visual>
+        <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+        <material name="black"/>
+      </visual>
+
+      <collision>
+        <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+
+  <xacro:macro name="wheel_joint" params="name parent child x y z">
+    <joint name="${name}" type="continuous">
+      <parent link="${parent}"/>
+      <child  link="${child}"/>
+      <origin xyz="${x} ${y} ${z}" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.01" friction="0.0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- ========== 前轮转向柱 ========== -->
+  <xacro:property name="steer_limit" value="0.6"/>
+
+  <xacro:macro name="steering_link" params="name">
+    <link name="${name}">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <mass value="0.02"/>
+        <inertia ixx="0.0000055" ixy="0" ixz="0"
+                 iyy="0.0000055" iyz="0"
+                 izz="0.0000012"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0.025" rpy="0 0 0"/>
+        <geometry>
+          <cylinder radius="0.008" length="0.05"/>
+        </geometry>
+        <material name="light_grey"/>
+      </visual>
+    </link>
+  </xacro:macro>
+
+  <xacro:macro name="steering_joint" params="name parent child x y z">
+    <joint name="${name}" type="revolute">
+      <parent link="${parent}"/>
+      <child  link="${child}"/>
+      <origin xyz="${x} ${y} ${z}" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-steer_limit}" upper="${steer_limit}" effort="5.0" velocity="5.0"/>
+      <dynamics damping="0.05" friction="0.0"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- ========== 实例化轮子与转向柱 ========== -->
+  <!-- 轮心高度 = base_link 中心(z=${base_z}) - 轮子半径，保证轮子恰好接触地面 -->
+  <xacro:wheel_link name="front_left_wheel"/>
+  <xacro:wheel_link name="front_right_wheel"/>
+  <xacro:wheel_link name="rear_left_wheel"/>
+  <xacro:wheel_link name="rear_right_wheel"/>
+
+  <xacro:steering_link name="front_left_steering_link"/>
+  <xacro:steering_link name="front_right_steering_link"/>
+
+  <xacro:steering_joint name="front_left_steering_joint"  parent="base_link" child="front_left_steering_link"
+                        x="${wheel_x_offset}"  y="${wheel_y_offset}"  z="${-wheel_radius}"/>
+  <xacro:steering_joint name="front_right_steering_joint" parent="base_link" child="front_right_steering_link"
+                        x="${wheel_x_offset}"  y="${-wheel_y_offset}" z="${-wheel_radius}"/>
+
+  <xacro:wheel_joint name="front_left_wheel_joint"  parent="front_left_steering_link"  child="front_left_wheel"  x="0" y="0" z="0"/>
+  <xacro:wheel_joint name="front_right_wheel_joint" parent="front_right_steering_link" child="front_right_wheel" x="0" y="0" z="0"/>
+  <xacro:wheel_joint name="rear_left_wheel_joint"   parent="base_link" child="rear_left_wheel"   x="${-wheel_x_offset}" y="${wheel_y_offset}"  z="${-wheel_radius}"/>
+  <xacro:wheel_joint name="rear_right_wheel_joint"  parent="base_link" child="rear_right_wheel"  x="${-wheel_x_offset}" y="${-wheel_y_offset}" z="${-wheel_radius}"/>
+
+  <!-- ========== Gazebo 仿真配置 ========== -->
+  <gazebo>
+    <plugin filename="gz-sim-joint-state-publisher-system"
+            name="gz::sim::systems::JointStatePublisher"/>
+    <plugin filename="gz-sim-joint-position-controller-system"
+            name="gz::sim::systems::JointPositionController">
+      <joint_name>front_left_steering_joint</joint_name>
+      <sub_topic>steering_cmd</sub_topic>
+      <p_gain>10.0</p_gain>
+      <i_gain>1.0</i_gain>
+      <i_max>1.0</i_max>
+      <d_gain>0.1</d_gain>
+      <cmd_max>5.0</cmd_max>
+      <cmd_min>-5.0</cmd_min>
+    </plugin>
+    <plugin filename="gz-sim-joint-position-controller-system"
+            name="gz::sim::systems::JointPositionController">
+      <joint_name>front_right_steering_joint</joint_name>
+      <sub_topic>steering_cmd</sub_topic>
+      <p_gain>10.0</p_gain>
+      <i_gain>1.0</i_gain>
+      <i_max>1.0</i_max>
+      <d_gain>0.1</d_gain>
+      <cmd_max>5.0</cmd_max>
+      <cmd_min>-5.0</cmd_min>
+    </plugin>
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>rear_left_wheel_joint</left_joint>
+      <right_joint>rear_right_wheel_joint</right_joint>
+      <wheel_separation>${2 * wheel_y_offset}</wheel_separation>
+      <wheel_radius>${wheel_radius}</wheel_radius>
+      <odom_topic>/odom</odom_topic>
+      <tf_topic>/tf</tf_topic>
+      <child_frame_id>base_footprint</child_frame_id>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <max_linear_acceleration>5.0</max_linear_acceleration>
+      <max_angular_acceleration>10.0</max_angular_acceleration>
+      <max_linear_velocity>0.5</max_linear_velocity>
+      <max_angular_velocity>1.5</max_angular_velocity>
+    </plugin>
+  </gazebo>
+
+</robot>

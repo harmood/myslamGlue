@@ -1,0 +1,22 @@
+{
+    "ROS2.distro": "jazzy",
+    "cmake.sourceDirectory": "/home/ghb/ros2/myslam_ws/src/maze_world",
+    "python.autoComplete.extraPaths": [
+        "/opt/ros/jazzy/opt/gz_sim_vendor/lib/python",
+        "/opt/ros/jazzy/opt/sdformat_vendor/lib/python",
+        "/opt/ros/jazzy/opt/gz_transport_vendor/lib/python",
+        "/opt/ros/jazzy/opt/gz_msgs_vendor/lib/python",
+        "/opt/ros/jazzy/opt/gz_math_vendor/lib/python",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "cmake.configureEnvironment": {
+        "AMENT_PREFIX_PATH": "/opt/ros/jazzy",
+        "CMAKE_PREFIX_PATH": "/opt/ros/jazzy",
+        "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages"
+    },
+    "cmake.buildEnvironment": {
+        "AMENT_PREFIX_PATH": "/opt/ros/jazzy",
+        "CMAKE_PREFIX_PATH": "/opt/ros/jazzy",
+        "PYTHONPATH": "/opt/ros/jazzy/lib/python3.12/site-packages"
+    }
+}
