@@ -1,4 +1,18 @@
+# RViz2 配置文件（由 display.launch.py 用 -d 参数加载）
+# ==============================================================
+# 该文件由 RViz 自身生成，本文件在此基础上加了注释说明。
+#
+# 关键点：
+#   1. Global Options 的 Fixed Frame 为 base_footprint，所有显示项都相对它计算；
+#   2. 显示项只用 Grid / TF / RobotModel 三项，用于检查模型外形与 TF 树；
+#   3. Class 名统一用 rviz_default_plugins/*（旧写法 rviz/Grid 等已废弃，
+#      会导致插件加载告警）。
+#
+# 注意：在 RViz 里点 "Save Config" 会重写本文件，注释会丢失。
+# ==============================================================
+
 Panels:
+# 左侧“Displays”面板：管理所有显示项
 - Class: rviz_common/Displays
   Help Height: 78
   Name: Displays
@@ -26,9 +40,11 @@ Panels:
   Name: Time
   SyncMode: 0
   SyncSource: ''
+# 可视化主管理器：Displays 为显示项列表，Global Options/Tools/Views 为全局设置
 Visualization Manager:
   Class: ''
   Displays:
+  # 网格：提供地面参考，Cell Size=1m，Plane Cell Count=10 表示共 10x10 格
   - Alpha: 0.5
     Cell Size: 1
     Class: rviz_default_plugins/Grid
@@ -47,11 +63,17 @@ Visualization Manager:
     Plane Cell Count: 10
     Reference Frame: <Fixed Frame>
     Value: true
+  # TF：显示坐标系之间的连线，用于确认 URDF 生成的 TF 树是否正确
+  # （base_footprint -> base_link -> 轮子/相机/雷达）
   - Class: rviz_default_plugins/TF
     Enabled: true
     Filter (blacklist): ''
     Filter (whitelist): ''
     Frame Timeout: 15
+    # Frames 是显示白名单；All Enabled: false 表示默认不逐个显示，
+    # 仅显示下面被勾选（Value: true）的坐标系。
+    # 注意：下列名字沿用了早期模型，与当前 URDF 的连杆名并不完全一致
+    #（如 base_scan/caster_back_*），需要显示新连杆时请在此手动勾选。
     Frames:
       All Enabled: false
       base_footprint:
@@ -90,6 +112,9 @@ Visualization Manager:
     Tree: {}
     Update Interval: 0
     Value: true
+  # RobotModel：按 robot_description 绘制小车模型本体。
+    # Description Source 为 Topic，即订阅 /robot_description（robot_state_publisher 发布），
+    # 因此 launch 里必须启动 robot_state_publisher，否则这里会一直报错。
   - Alpha: 1
     Class: rviz_default_plugins/RobotModel
     Collision Enabled: false
@@ -117,10 +142,13 @@ Visualization Manager:
     Value: true
     Visual Enabled: true
   Enabled: true
+  # 全局设置：Fixed Frame 是所有显示项的参考坐标系，
+  # 必须存在于 TF 树中，否则 RViz 会提示 "Fixed Frame [xxx] does not exist"
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: base_footprint
   Name: root
+  # 工具栏：测量、2D 导航目标、发布点等交互工具
   Tools:
   - Class: rviz_default_plugins/Interact
     Hide Inactive Objects: true
@@ -136,6 +164,7 @@ Visualization Manager:
     Single click: true
     Topic: /clicked_point
   Value: true
+  # 视图：Orbit 为绕焦点旋转的第三人称视角，Distance=2m 是观察模型的合适距离
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
@@ -151,6 +180,7 @@ Visualization Manager:
       Value: Orbit (rviz)
       Yaw: 0.7
     Saved: null
+# 窗口与面板布局（QMainWindow State 是 Qt 序列化后的二进制串，请勿手工修改）
 Window Geometry:
   Displays:
     collapsed: false

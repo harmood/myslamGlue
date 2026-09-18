@@ -1,5 +1,11 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  maze_gui 包的元信息（ROS 2 package format 3）。
+
+  本包是一个纯 Python 包（ament_python）：以 Tkinter 提供图形控制台，
+  显示小车实时状态并提供遥控/建图开关；不含需要编译的代码。
+-->
 <package format="3">
   <name>maze_gui</name>
   <version>0.1.0</version>
@@ -7,18 +13,25 @@
   <maintainer email="ghb@todo.todo">ghb</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- 构建工具：ament_python 表示用 Python 方式构建（配合 setup.py/setup.cfg） -->
   <buildtool_depend>ament_python</buildtool_depend>
 
+  <!-- 运行期依赖 -->
+  <!-- 客户端库：节点、话题订阅与发布 -->
   <exec_depend>rclpy</exec_depend>
+  <!-- 消息类型：/odom、/joint_states、/cmd_vel、开关用的 Bool/Float64 -->
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <!-- 启动系统：dashboard.launch.py 用到的 launch 与 launch_ros -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <!-- Tkinter 界面库；系统若未安装 python3-tk，窗口无法创建 -->
   <exec_depend>python3-tk</exec_depend>
 
   <export>
+    <!-- 声明构建类型为 ament_python，供 colcon 选择构建方式 -->
     <build_type>ament_python</build_type>
   </export>
 </package>

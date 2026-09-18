@@ -1,11 +1,44 @@
 <?xml version="1.0"?>
 <sdf version="1.9">
+  <!--
+    Gazebo 迷宫世界（SDF 1.9），由 maze_world 包提供、maze.launch.py 加载。
+
+    坐标系：世界原点位于迷宫正中心，X 向东、Y 向北、Z 向上。
+      迷宫为 9x9 个边长为 1.2m 的格子；墙厚 0.2m、墙高 1.2m，
+      通道净宽 1.0m（= 格子间距 1.2m - 墙厚 0.2m）。
+      maze_walls 模型的 pose 取 (-4.8, -4.8)，把“格子局部坐标原点
+      （左下角 0 号格中心）”平移到世界坐标，因此迷宫整体范围为
+      X、Y ∈ [-4.8, 4.8]，起点 S 在 (-4.8, -4.8)、终点 G 在 (4.8, 4.8)。
+
+    整体组成（自上而下）：
+      1. physics 与物理/系统插件：仿真步长和 Gazebo 系统实体；
+      2. gui：Gazebo 图形界面的布局与可视化插件；
+      3. ground_plane：地面；
+      4. maze_walls：全部墙体（四面外墙 + 柱子 + 内部墙段）；
+      5. start_marker / goal_marker：起点、终点标记。
+
+    本文件由 scripts/generate_maze.py 依据固定布局 FIXED_LAYOUT 生成，
+    墙体条目是脚本批量拼出的重复内容。重新运行脚本会整体覆盖本文件，
+    因此这里手工写的注释在下次生成时会丢失；
+    要调整迷宫结构请修改脚本里的布局，而不要直接改本文件。
+  -->
   <world name="maze">
+    <!--
+      物理引擎与步长。type=dart 使用 DART 引擎；max_step_size=0.001
+      表示每个物理步长 1ms，real_time_update_rate=1000 表示每实秒计算
+      1000 步（即实时比约 1:1）。步长取小是为了让薄墙碰撞更稳定。
+    -->
     <physics name="1ms" type="dart">
       <max_step_size>0.001</max_step_size>
       <real_time_update_rate>1000</real_time_update_rate>
     </physics>
 
+    <!--
+      以下四个是 gz-sim 的系统插件，决定“仿真本身怎么运转”：
+      Physics 负责动力学解算；UserCommands 处理运行时插入/删除实体
+      （maze_bot 的 spawn 就靠它）；SceneBroadcaster 对外发布场景状态；
+      Sensors 提供传感器渲染管线（相机/雷达依赖它，渲染引擎为 ogre2）。
+    -->
     <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
     <plugin filename="gz-sim-user-commands-system"
             name="gz::sim::systems::UserCommands"/>
@@ -15,6 +48,12 @@
       <render_engine>ogre2</render_engine>
     </plugin>
 
+    <!--
+      以下一大段 <gui> 是 Gazebo（gz-sim）图形界面的配置：3D 视图、相机控制、
+      世界控制/统计面板、实体树、形状与灯光面板等可视化插件。
+      与仿真物理无关——用无头模式（-s）运行时这段会被忽略，
+      因此只需要看物理行为时不必关心这里；fullscreen=0 表示窗口模式。
+    -->
     <gui fullscreen="0">
 
       <plugin filename="MinimalScene" name="3D View">
@@ -236,6 +275,12 @@
       </plugin>
     </gui>
 
+    <!--
+      地面。collision 用 100x100 的无限大平面（法线朝上，位于 z=0）；
+      visual 则是一个 11x11、厚 0.1 的方块，下移 0.05 使顶面正好在 z=0，
+      其边长 = 迷宫跨度 9.6m + 两侧各半个格子 0.5m + 两侧外墙厚 0.2m，
+      刚好把迷宫及其外墙完全覆盖，避免看到地面的“边界”。
+    -->
     <model name="ground_plane">
       <static>true</static>
       <link name="link">
@@ -264,10 +309,27 @@
       </link>
     </model>
 
+    <!--
+      迷宫墙体模型。static=true：墙体固定不动，不参与动力学，仿真更省算力。
+      pose (-4.8, -4.8) 把模型局部坐标平移，使局部原点（0 号格中心）
+      落在世界 (-4.8, -4.8)，从而让迷宫中心对齐世界原点。
+
+      下面 <link name="walls"> 里成对出现的是大量 collision + visual 条目，
+      均为脚本按固定布局批量生成，命名规律如下：
+        outer_south/north/west/east : 四面外墙
+        pillar_<列>_<行>            : 墙交汇处的方形柱子（列=局部 X 索引，行=局部 Y 索引）
+        east_<列>_<行>              : 格子 (列,行) 东侧的竖直墙段
+        north_<列>_<行>             : 格子 (列,行) 北侧的水平墙段
+      每个条目的 <pose> 是相对本模型原点的位置与姿态（6 维，前三位为 XYZ），
+      <size> 是长方体的长宽高——柱子为 T×T，墙段长度已扣除两端柱子厚度。
+      修改迷宫布局请改 scripts/generate_maze.py 的 FIXED_LAYOUT 后重新生成，
+      不要在这里逐个手改。
+    -->
     <model name="maze_walls">
       <static>true</static>
       <pose>-4.800 -4.800 0 0 0 0</pose>
       <link name="walls">
+        <!-- 四面外墙：绕迷宫一圈，长度含两侧外扩量 -->
         <collision name='outer_south_collision'>
           <pose>4.800 -0.600 0.600 0 0 0</pose>
           <geometry>
@@ -352,6 +414,7 @@
             <specular>0.1 0.1 0.1 1</specular>
           </material>
         </visual>
+        <!-- 柱子：8x8 个墙交汇点各放一个 0.2x0.2 的方柱，供墙段连接 -->
         <collision name='pillar_0_0_collision'>
           <pose>0.600 0.600 0.600 0 0 0</pose>
           <geometry>
@@ -1696,6 +1759,7 @@
             <specular>0.1 0.1 0.1 1</specular>
           </material>
         </visual>
+        <!-- 竖直墙段（east_*）：位于格子东侧网格线上，沿 Y 方向，长度 1.0m -->
         <collision name='east_0_5_collision'>
           <pose>0.600 6.000 0.600 0 0 0</pose>
           <geometry>
@@ -2263,6 +2327,7 @@
             <specular>0.1 0.1 0.1 1</specular>
           </material>
         </visual>
+        <!-- 水平墙段（north_*）：位于格子北侧网格线上，沿 X 方向，长度 1.0m -->
         <collision name='north_0_0_collision'>
           <pose>0.000 0.600 0.600 0 0 0</pose>
           <geometry>
@@ -2937,6 +3002,10 @@
         </visual>
       </link>
     </model>
+    <!--
+      起点标记：位于世界 (-4.8, -4.8)，即 0 号格中心，与布局里的 S 对应。
+      static 的薄圆柱圆盘（半径 0.15、厚 0.02），绿色；仅用于可视化，无碰撞。
+    -->
     <model name='start_marker'>
       <static>true</static>
       <pose>-4.800 -4.800 0 0 0 0</pose>
@@ -2957,6 +3026,10 @@
         </visual>
       </link>
     </model>
+    <!--
+      终点标记：位于世界 (4.8, 4.8)，即第 8 号格中心，与布局里的 G 对应。
+      形状同起点标记，颜色为红色；仅可视化，无碰撞。
+    -->
     <model name='goal_marker'>
       <static>true</static>
       <pose>4.800 4.800 0 0 0 0</pose>

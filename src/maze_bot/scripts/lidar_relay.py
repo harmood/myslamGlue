@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+"""激光雷达扫描中继节点。
+
+链路：Gazebo 雷达 -> /lidar/scan_raw（ros_gz_bridge）-> 本节点 -> /scan -> RViz / SLAM。
+
+与 camera_relay 一样承担两件事：
+    1. 统一 frame_id：Gazebo 桥上来的扫描可能带模型前缀或空的坐标系名，
+       这里统一改成 lidar_link，保证与 URDF/TF 树中的雷达连杆一致
+       （RViz 的 LaserScan 显示和 SLAM 都要求 frame_id 能在 TF 里查到）。
+    2. QoS 适配：高频传感器流用 BEST_EFFORT 转发，来不及消费就丢旧帧，
+       避免 RELIABLE 队列堆积把数据流堵死。
+"""
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
@@ -10,6 +21,7 @@ from sensor_msgs.msg import LaserScan
 class LidarRelay(Node):
     def __init__(self):
         super().__init__('lidar_relay')
+        # 输入输出话题与目标坐标系均可通过参数覆盖
         self.declare_parameter('input_topic', '/lidar/scan_raw')
         self.declare_parameter('output_topic', '/scan')
         self.declare_parameter('frame_id', 'lidar_link')
@@ -42,12 +54,14 @@ class LidarRelay(Node):
             f'（frame {self.frame_id}）')
 
     def on_scan(self, msg):
+        """收到一帧扫描：改写 frame_id 后转发。"""
         if not self.enabled:
             return
         msg.header.frame_id = self.frame_id
         try:
             self.publisher.publish(msg)
         except Exception as exc:  # 单帧发布失败不应终止中继
+            # 限频 5 秒，避免持续失败时刷屏
             self.get_logger().warning(
                 f'雷达数据转发失败，已丢弃该帧：{exc}', throttle_duration_sec=5.0)
 
@@ -60,6 +74,7 @@ def main(args=None):
     except (KeyboardInterrupt, ExternalShutdownException, Exception):
         pass
     finally:
+        # 无论正常退出还是异常，都释放节点资源
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

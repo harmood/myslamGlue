@@ -1,22 +1,36 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  maze_world 包的元信息（ROS 2 package format 3）。
+
+  本包是纯资源包：提供迷宫 Gazebo 世界（worlds/maze.world）、启动文件、
+  RViz 配置与迷宫生成脚本，不含需要编译的代码，
+  因此只需 buildtool_depend 一个构建工具依赖。
+-->
 <package format="3">
   <name>maze_world</name>
   <version>0.1.0</version>
   <description>Maze-like Gazebo world: square map, 1.2m walls, 1m corridors</description>
+  <!-- 维护者与许可证信息：发布到公共仓库前需改成真实邮箱/许可证 -->
   <maintainer email="ghb@todo.todo">ghb</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- 构建工具：提供 ament_package()、ament 环境与 install(DIRECTORY) 规则 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <!-- 以下均为运行期依赖（exec_depend），缺任何一个都会让对应 launch/RViz 报错 -->
+  <!-- 启动系统：launch 提供框架，launch_ros 提供 Node 等 ROS 专用动作 -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <!-- 仿真链路：ros_gz_sim 拉起 Gazebo，gz_sim_vendor 提供 gz-sim 运行环境 -->
   <exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>gz_sim_vendor</exec_depend>
+  <!-- RViz2 及其内置显示插件（Grid/TF/RobotModel/Image 等） -->
   <exec_depend>rviz2</exec_depend>
   <exec_depend>rviz_default_plugins</exec_depend>
 
   <export>
+    <!-- 声明构建类型为 ament_cmake，供 colcon 选择构建方式 -->
     <build_type>ament_cmake</build_type>
   </export>
 </package>

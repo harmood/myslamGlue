@@ -1,7 +1,21 @@
 <?xml version="1.0"?>
+<!--
+  四轮小车模型（xacro 格式，需用 xacro 展开成 URDF 后使用）。
+
+  结构：base_footprint（地面投影）-> base_link（车体/躯干长方体）
+        ├─ front_left/right_steering_link（前轮转向柱，可绕 Z 轴转动）
+        │    └─ front_left/right_wheel（前轮，可绕 Y 轴滚动）
+        ├─ rear_left/right_wheel（后轮，由 DiffDrive 插件直接驱动）
+        ├─ camera_link（车头相机，挂 RGB 与深度两个传感器）
+        └─ lidar_link（顶部激光雷达）
+
+  说明：base_link 是长方体躯干；四个轮子用圆柱表示，轴沿各自的 Y 方向；
+        前轮带转向柱以支持 Ackermann 式转向，后轮为驱动轮。
+-->
 <robot name="maze_bot" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!-- ========== 材质 ========== -->
+  <!-- 仅影响 RViz/Gazebo 的可视颜色，不参与物理计算 -->
   <material name="dark_grey">
     <color rgba="0.2 0.2 0.2 1.0"/>
   </material>
@@ -16,19 +30,26 @@
   </material>
 
   <!-- ========== 尺寸 / 质量参数 ========== -->
-  <xacro:property name="body_length" value="0.40"/>
-  <xacro:property name="body_width"  value="0.25"/>
-  <xacro:property name="body_height" value="0.10"/>
+  <!-- 集中在此处定义，改尺寸只需改这里；单位：米、千克 -->
+  <xacro:property name="body_length" value="0.40"/>  <!-- 躯干长（X 方向） -->
+  <xacro:property name="body_width"  value="0.25"/>  <!-- 躯干宽（Y 方向） -->
+  <xacro:property name="body_height" value="0.10"/>  <!-- 躯干高（Z 方向） -->
   <xacro:property name="body_mass"   value="1.0"/>
 
-  <xacro:property name="wheel_radius"   value="0.05"/>
-  <xacro:property name="wheel_width"    value="0.04"/>
+  <xacro:property name="wheel_radius"   value="0.05"/>  <!-- 轮半径 -->
+  <xacro:property name="wheel_width"    value="0.04"/>  <!-- 轮厚 -->
   <xacro:property name="wheel_mass"     value="0.05"/>
-  <xacro:property name="wheel_x_offset" value="0.15"/>
-  <xacro:property name="wheel_y_offset" value="0.14"/>
+  <xacro:property name="wheel_x_offset" value="0.15"/>  <!-- 轮心相对车体中心的纵向偏移 -->
+  <xacro:property name="wheel_y_offset" value="0.14"/>  <!-- 轮心相对车体中心的横向偏移 -->
+  <!-- 车体中心离地高度 = 轮半径 + 半个车高，保证轮子恰好与地面相切 -->
   <xacro:property name="base_z"         value="${wheel_radius + body_height / 2}"/>
 
   <!-- ========== 惯量计算宏 ========== -->
+  <!--
+    惯性矩阵必须有，否则 Gazebo 无法做动力学解算（RViz 只显示时无所谓）。
+    这里按均质几何体公式推导，避免手写数值出错。
+  -->
+  <!-- 长方体转动惯量：Ixx=m(y²+z²)/12，以此类推 -->
   <xacro:macro name="box_inertia" params="mass x y z">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -39,7 +60,12 @@
     </inertial>
   </xacro:macro>
 
-  <!-- 圆柱轴沿惯性系 z 轴；配合 rpy 旋转 90° 后轴沿 link 的 y 轴 -->
+  <!--
+    圆柱转动惯量。公式给出的轴沿惯性系 z 轴，
+    再配合 rpy 绕 X 旋转 90°，使圆柱轴对齐 link 自身的 y 轴
+    —— 这样轮子的 visual/collision 与惯量方向一致，
+    且绕 y 轴滚动时 `izz = m r²/2` 正是绕旋转轴的正确取值。
+  -->
   <xacro:macro name="cylinder_inertia" params="mass radius length">
     <inertial>
       <origin xyz="0 0 0" rpy="1.5707963 0 0"/>
@@ -51,12 +77,18 @@
   </xacro:macro>
 
   <!-- ========== base_footprint（dummy 根 link） ========== -->
+  <!--
+    空的质量/惯量，只作为整棵 TF 树的根，代表机器人在地面的投影点。
+    这样做一是让 URDF 的根节点无惯性（否则 Gazebo/解析器会告警），
+    二是后续 continuous 关节的父连杆有了统一的固定参考。
+  -->
   <link name="base_footprint"/>
 
   <!-- ========== base_link 躯干（长方体） ========== -->
   <link name="base_link">
     <xacro:box_inertia mass="${body_mass}" x="${body_length}" y="${body_width}" z="${body_height}"/>
 
+    <!-- visual 决定外观，collision 决定碰撞体；这里两者用同一几何 -->
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
@@ -74,6 +106,7 @@
   </link>
 
   <!-- base_link 中心距地面 = 轮子半径 + 半个车身高度 -->
+  <!-- 固定关节：把躯干抬到 base_z 高度，同时把 base_link 接到根节点上 -->
   <joint name="base_footprint_joint" type="fixed">
     <parent link="base_footprint"/>
     <child  link="base_link"/>
@@ -82,6 +115,7 @@
 
   <!-- ========== 通用轮子宏 ========== -->
   <!-- 轮子：cylinder radius=0.05m length=0.04m，轴沿 y 方向 -->
+  <!-- visual/collision 都要绕 X 旋转 90°，把默认竖直的圆柱放倒成轮子 -->
   <xacro:macro name="wheel_link" params="name">
     <link name="${name}">
       <xacro:cylinder_inertia mass="${wheel_mass}" radius="${wheel_radius}" length="${wheel_width}"/>
@@ -103,6 +137,11 @@
     </link>
   </xacro:macro>
 
+  <!--
+    轮子转动关节：continuous（可无限圈转动），绕自身 y 轴。
+    damping 给一点阻尼以抑制仿真中的抖动，friction=0 避免额外的静摩擦死区
+    （前轮的转向摩擦由 JointPositionController 的 PID 处理）。
+  -->
   <xacro:macro name="wheel_joint" params="name parent child x y z">
     <joint name="${name}" type="continuous">
       <parent link="${parent}"/>
@@ -114,8 +153,13 @@
   </xacro:macro>
 
   <!-- ========== 前轮转向柱 ========== -->
+  <!-- 转向角限位 ±0.6 rad（约 ±34°），避免打死时轮子与车体互相穿插 -->
   <xacro:property name="steer_limit" value="0.6"/>
 
+  <!--
+    转向柱：视觉上是一根细圆柱（origin 抬高半个柱长，使其立于轮心之上），
+    collision 省略 —— 柱体在车体内部，加碰撞只会增加计算量并可能自碰撞。
+  -->
   <xacro:macro name="steering_link" params="name">
     <link name="${name}">
       <inertial>
@@ -135,6 +179,7 @@
     </link>
   </xacro:macro>
 
+  <!-- 转向关节：revolute（有限角度），绕 Z 轴偏转；limit 里的 effort/velocity 是仿真必需项 -->
   <xacro:macro name="steering_joint" params="name parent child x y z">
     <joint name="${name}" type="revolute">
       <parent link="${parent}"/>
@@ -156,17 +201,21 @@
   <xacro:steering_link name="front_left_steering_link"/>
   <xacro:steering_link name="front_right_steering_link"/>
 
+  <!-- 前轮：转向柱挂在 base_link 前部，其 z 取 -wheel_radius，使转向轴正好穿过轮心 -->
   <xacro:steering_joint name="front_left_steering_joint"  parent="base_link" child="front_left_steering_link"
                         x="${wheel_x_offset}"  y="${wheel_y_offset}"  z="${-wheel_radius}"/>
   <xacro:steering_joint name="front_right_steering_joint" parent="base_link" child="front_right_steering_link"
                         x="${wheel_x_offset}"  y="${-wheel_y_offset}" z="${-wheel_radius}"/>
 
+  <!-- 前轮挂在转向柱上（相对坐标为 0），因此转向柱转动时轮子一起偏转；
+       后轮直接挂在 base_link 上，由 DiffDrive 插件驱动 -->
   <xacro:wheel_joint name="front_left_wheel_joint"  parent="front_left_steering_link"  child="front_left_wheel"  x="0" y="0" z="0"/>
   <xacro:wheel_joint name="front_right_wheel_joint" parent="front_right_steering_link" child="front_right_wheel" x="0" y="0" z="0"/>
   <xacro:wheel_joint name="rear_left_wheel_joint"   parent="base_link" child="rear_left_wheel"   x="${-wheel_x_offset}" y="${wheel_y_offset}"  z="${-wheel_radius}"/>
   <xacro:wheel_joint name="rear_right_wheel_joint"  parent="base_link" child="rear_right_wheel"  x="${-wheel_x_offset}" y="${-wheel_y_offset}" z="${-wheel_radius}"/>
 
   <!-- ========== 车头相机 ========== -->
+  <!-- 相机连杆本体（小方块），实际成像由下面的 Gazebo 传感器负责 -->
   <link name="camera_link">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -184,13 +233,20 @@
     </visual>
   </link>
 
+  <!-- 相机固定在车体前端（X 正方向为车头）略高于车身中心处 -->
   <joint name="camera_joint" type="fixed">
     <parent link="base_link"/>
     <child  link="camera_link"/>
     <origin xyz="0.19 0 0.02" rpy="0 0 0"/>
   </joint>
 
+  <!-- 相机传感器：RGB 与深度各一个，挂在同一个 camera_link 上 -->
   <gazebo reference="camera_link">
+    <!--
+      RGB 相机：15 Hz，640x480，水平视场 1.047 rad(60°)。
+      near/far 裁剪面决定可见范围（0.05~20 m）。
+      visualize=true 会在 Gazebo 界面里额外开一个小窗口预览画面。
+    -->
     <sensor name="front_camera" type="camera">
       <pose>0 0 0 0 0 0</pose>
       <topic>/camera/image_raw</topic>
@@ -210,6 +266,12 @@
       <always_on>1</always_on>
       <visualize>true</visualize>
     </sensor>
+    <!--
+      深度相机：10 Hz，输出 R_FLOAT32 单通道浮点（单位：米），
+      视场与 RGB 保持一致以便 rtabmap 做 RGB-D 配准；
+      far 取 10 m（深度精度随距离下降，无需与 RGB 一样远）。
+      visualize=false：不弹预览窗口，避免多开一个渲染面板占用资源。
+    -->
     <sensor name="depth_camera" type="depth_camera">
       <pose>0 0 0 0 0 0</pose>
       <topic>/camera/depth_image</topic>
@@ -232,6 +294,7 @@
   </gazebo>
 
   <!-- ========== 顶部激光雷达 ========== -->
+  <!-- 雷达连杆：蓝色短圆柱，装在车体顶部中心 -->
   <link name="lidar_link">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -255,6 +318,7 @@
     </collision>
   </link>
 
+  <!-- z=0.07：抬到车体（半高 0.05）之上，避免扫描被自身车体遮挡 -->
   <joint name="lidar_joint" type="fixed">
     <parent link="base_link"/>
     <child  link="lidar_link"/>
@@ -262,6 +326,12 @@
   </joint>
 
   <gazebo reference="lidar_link">
+    <!--
+      gpu_lidar：360 个采样点、覆盖 -π~π 一整圈（分辨率 1，即每线 1°），
+      量程 0.12~10 m，10 Hz 输出 —— 与 RViz/SLAM 的预期一致。
+      gpu_lidar 走 GPU 渲染管线出扫描，比 cpu_ray 版本快很多。
+      visualize=true 会在 Gazebo 中画出扫描射线，便于确认雷达朝向。
+    -->
     <sensor name="lidar" type="gpu_lidar">
       <pose>0 0 0 0 0 0</pose>
       <topic>/lidar/scan_raw</topic>
@@ -287,9 +357,17 @@
   </gazebo>
 
   <!-- ========== Gazebo 仿真配置 ========== -->
+  <!-- 插件决定机器人在仿真里"怎么动"，URDF 本身只描述外形与结构 -->
   <gazebo>
+    <!-- 关节状态发布：把各关节角发布到 gz 的 joint_state 话题，
+         经 ros_gz_bridge 映射为 ROS 2 的 /joint_states -->
     <plugin filename="gz-sim-joint-state-publisher-system"
             name="gz::sim::systems::JointStatePublisher"/>
+    <!--
+      前轮转向控制器：一个插件只能控制一个关节，所以左右各配一个。
+      sub_topic=steering_cmd 接收目标转角（经桥接后对应 ROS 2 的
+      /steering_position），用 PID 把转向柱拉到目标角度。
+    -->
     <plugin filename="gz-sim-joint-position-controller-system"
             name="gz::sim::systems::JointPositionController">
       <joint_name>front_left_steering_joint</joint_name>
@@ -312,6 +390,14 @@
       <cmd_max>5.0</cmd_max>
       <cmd_min>-5.0</cmd_min>
     </plugin>
+    <!--
+      差速驱动：直接控制左右后轮转速（前轮只负责转向，不参与驱动）。
+      wheel_separation/wheel_radius 必须与上面的尺寸参数一致，否则里程计
+      推算的速度和转角会有系统性偏差。
+      odom_topic/tf_topic 经桥接后分别是 ROS 2 的 /odom 与 /tf，
+      child_frame_id 用 base_footprint，与 TF 树的根保持一致。
+      末尾几项是加速度/速度上限，防止仿真中出现不合理的瞬移。
+    -->
     <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
       <left_joint>rear_left_wheel_joint</left_joint>
       <right_joint>rear_right_wheel_joint</right_joint>

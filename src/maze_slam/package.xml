@@ -1,5 +1,11 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  maze_slam 包的元信息（ROS 2 package format 3）。
+
+  本包是纯 Python 包（ament_python）：以 RTAB-Map 提供视觉 SLAM，
+  并附带建图开关与地图保存功能；不含需要编译的代码。
+-->
 <package format="3">
   <name>maze_slam</name>
   <version>0.1.0</version>
@@ -7,21 +13,33 @@
   <maintainer email="ghb@todo.todo">ghb</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- 构建工具：ament_python 表示用 Python 方式构建（配合 setup.py/setup.cfg） -->
   <buildtool_depend>ament_python</buildtool_depend>
 
+  <!-- 运行期依赖 -->
+  <!-- 客户端库：节点、话题/服务与定时器 -->
   <exec_depend>rclpy</exec_depend>
+  <!-- 消息类型：Image/DepthImage/CameraInfo/PointCloud2 等 -->
   <exec_depend>sensor_msgs</exec_depend>
+  <!-- 点云逐点读取：保存 PCD 时用到 -->
   <exec_depend>sensor_msgs_py</exec_depend>
+  <!-- OccupancyGrid：订阅 /map 栅格地图 -->
   <exec_depend>nav_msgs</exec_depend>
+  <!-- Bool：建图开关与状态话题 -->
   <exec_depend>std_msgs</exec_depend>
+  <!-- Empty（rtabmap 的 pause/resume 服务）、Trigger（~/save_map 服务） -->
   <exec_depend>std_srvs</exec_depend>
+  <!-- RTAB-Map 的 SLAM 节点与消息定义（launch 中启动 rtabmap_slam/rtabmap） -->
   <exec_depend>rtabmap_slam</exec_depend>
   <exec_depend>rtabmap_ros</exec_depend>
+  <!-- 启动系统：slam.launch.py 用到的 launch 与 launch_ros -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <!-- 通过 ament 索引解析包安装路径（resource_paths.workspace_root） -->
   <exec_depend>ament_index_python</exec_depend>
 
   <export>
+    <!-- 声明构建类型为 ament_python，供 colcon 选择构建方式 -->
     <build_type>ament_python</build_type>
   </export>
 </package>

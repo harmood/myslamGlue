@@ -1,5 +1,11 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  maze_tools 包的元信息（ROS 2 package format 3）。
+
+  纯 Python 包（ament_python），存放与机器人功能无直接关系的辅助工具，
+  目前只有 quickstart 运行日志过滤器，因此除构建工具外没有运行期依赖。
+-->
 <package format="3">
   <name>maze_tools</name>
   <version>0.1.0</version>
@@ -7,7 +13,10 @@
   <maintainer email="ghb@todo.todo">ghb</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- 构建工具：ament_python 表示用 Python 方式构建（配合 setup.py/setup.cfg） -->
   <buildtool_depend>ament_python</buildtool_depend>
+
+  <!-- 过滤器只用到 Python 标准库（os/re/signal/sys/datetime），故无需 exec_depend -->
 
   <export>
     <build_type>ament_python</build_type>

@@ -1,51 +1,91 @@
+# ros_gz_bridge（parameter_bridge）桥接配置
+# ===============================================================
+# 由 spawn_maze.launch.py 里的 ros_gz_bridge/parameter_bridge 节点通过
+# config_file 参数加载，逐条声明「Gazebo(gz-sim) 话题 <-> ROS 2 话题」的对应关系。
+#
+# 字段说明：
+#   ros_topic_name / ros_type_name : ROS 2 侧的话题名与消息类型
+#   gz_topic_name  / gz_type_name  : Gazebo 侧的话题名与消息类型
+#   direction                      : 数据流向
+#                                    GZ_TO_ROS = 仿真 -> ROS 2
+#                                    ROS_TO_GZ = ROS 2 -> 仿真
+#
+# 两侧话题名不一致的条目（如 /cmd_vel、/joint_states）说明这里顺带做了重映射：
+# 仿真内部使用带模型/世界前缀的名字，ROS 2 侧统一成简洁名字。
+#
+# 注意：相机只桥接了图像话题，没有桥接 camera_info；
+#       相机内参由 maze_slam 的 slam_manager 按 640x480、HFOV=1.047 自行合成。
+# ===============================================================
+
+
+# 仿真时钟。必须桥接：ROS 2 侧有 /clock 后，
+# 各节点设置 use_sim_time=True 才能与仿真时间对齐，
+# 否则 TF、传感器时间戳会与实际仿真进度不一致。
 - ros_topic_name: /clock
   gz_topic_name: /clock
   ros_type_name: rosgraph_msgs/msg/Clock
   gz_type_name: gz.msgs.Clock
   direction: GZ_TO_ROS
 
+# 速度指令：ROS 2 侧发 /cmd_vel，Gazebo 侧收 /model/maze_bot/cmd_vel。
+# 由 DiffDrive 插件（见 maze_bot.urdf.xacro）订阅并驱动后轮。
 - ros_topic_name: /cmd_vel
   gz_topic_name: /model/maze_bot/cmd_vel
   ros_type_name: geometry_msgs/msg/Twist
   gz_type_name: gz.msgs.Twist
   direction: ROS_TO_GZ
 
+# 里程计：DiffDrive 插件发布的位姿/速度，供导航与 RViz 使用。
+# 对应 TF 中的 maze_bot/odom -> base_footprint。
 - ros_topic_name: /odom
   gz_topic_name: /odom
   ros_type_name: nav_msgs/msg/Odometry
   gz_type_name: gz.msgs.Odometry
   direction: GZ_TO_ROS
 
+# 仿真侧 TF（gz 的 Pose_V -> ROS 2 的 TFMessage）。
+# 车轮、转向柱等运动关节的位姿靠它传给 robot_state_publisher 之外的链路。
 - ros_topic_name: /tf
   gz_topic_name: /tf
   ros_type_name: tf2_msgs/msg/TFMessage
   gz_type_name: gz.msgs.Pose_V
   direction: GZ_TO_ROS
 
+# 关节状态：Gazebo 侧话题带世界/模型前缀，ROS 2 侧统一为 /joint_states，
+# 供 robot_state_publisher 计算各连杆位姿（RViz 中的小车姿态依赖它）。
 - ros_topic_name: /joint_states
   gz_topic_name: /world/maze/model/maze_bot/joint_state
   ros_type_name: sensor_msgs/msg/JointState
   gz_type_name: gz.msgs.Model
   direction: GZ_TO_ROS
 
+# 前轮转向角指令：ROS 2 侧 /steering_position -> Gazebo 侧 steering_cmd，
+# 由两个 JointPositionController 插件分别控制左右转向关节。
 - ros_topic_name: /steering_position
   gz_topic_name: /model/maze_bot/steering_cmd
   ros_type_name: std_msgs/msg/Float64
   gz_type_name: gz.msgs.Double
   direction: ROS_TO_GZ
 
+# 车头 RGB 相机原始图像（640x480 R8G8B8，15 Hz）。
+# 桥上来的原始数据不会直接给 RViz 看，而是先经过 camera_relay
+# 中继成 /camera/image 并加上开关控制。
 - ros_topic_name: /camera/image_raw
   gz_topic_name: /camera/image_raw
   ros_type_name: sensor_msgs/msg/Image
   gz_type_name: gz.msgs.Image
   direction: GZ_TO_ROS
 
+# 车头深度相机（640x480 R_FLOAT32，10 Hz），供 rtabmap 建图使用。
+# 上游同样由 slam_manager 转发到 /slam/depth_image。
 - ros_topic_name: /camera/depth_image
   gz_topic_name: /camera/depth_image
   ros_type_name: sensor_msgs/msg/Image
   gz_type_name: gz.msgs.Image
   direction: GZ_TO_ROS
 
+# 激光雷达原始扫描（360 线、10 Hz），经 lidar_relay 中继为 /scan
+# 并统一 frame_id，再供 RViz / SLAM 使用。
 - ros_topic_name: /lidar/scan_raw
   gz_topic_name: /lidar/scan_raw
   ros_type_name: sensor_msgs/msg/LaserScan

@@ -1,3 +1,27 @@
+# RViz2 配置文件（由 maze.launch.py 用 -d 参数加载）
+# ==============================================================
+# 该文件由 RViz 自身生成，本文件在此基础上加了注释说明。
+#
+# 关键点：
+#   1. Global Options 的 Fixed Frame 是 maze_bot/odom：这是 Gazebo 端
+#      DiffDrive 插件给出的里程计坐标系（见 maze_bot 的 URDF/bridge 配置），
+#      TF 为 maze_bot/odom -> base_footprint，机器人各连杆都挂在其下。
+#   2. Class 名统一用 rviz_default_plugins/*（旧写法 rviz/Grid 等已废弃，
+#      用旧名会导致插件加载告警）。
+#   3. 各项显示默认只有 Grid / TF / RobotModel / Image 是开启的，
+#      其余（LaserScan/PointCloud2/Map/Path）为关闭状态，需要时手动勾选。
+#
+# 已知与当前工程不一致之处（本配置为模板残留，未做修改）：
+#   * TF 显示项里列出的 base_scan、caster_back_left/right_link、imu_link、
+#     odom、wheel_left/right_link 在当前 maze_bot 模型中并不存在；
+#     当前模型实际帧为 base_footprint/base_link/front_*_wheel、rear_*_wheel、
+#     front_*_steering_link、camera_link、lidar_link。
+#   * PointCloud2 订阅的 /cloud_registered、Path 订阅的 /path 以及 Map 的
+#     /map_updates，当前工程没有节点发布（rtabmap 的地图点云是 /rtabmap/cloud_map）。
+#
+# 注意：在 RViz 里点 "Save Config" 会重写本文件，注释会丢失。
+# ==============================================================
+
 Panels:
 - Class: rviz_common/Displays
   Help Height: 78
@@ -29,6 +53,8 @@ Panels:
 Visualization Manager:
   Class: ''
   Displays:
+  # 网格：提供地面参考。Cell Size=1m、Plane Cell Count=10 即 10x10 格；
+  # Reference Frame 为 <Fixed Frame>，随全局 Fixed Frame 一起移动。
   - Alpha: 0.5
     Cell Size: 1
     Class: rviz_default_plugins/Grid
@@ -47,6 +73,9 @@ Visualization Manager:
     Plane Cell Count: 10
     Reference Frame: <Fixed Frame>
     Value: true
+  # TF：显示坐标变换树。Frames 列表是 RViz 按固定 Frame 自动订阅到的名字，
+  # 其中多数（base_scan/caster_*/imu_link/odom/wheel_*）与当前模型不符，见文件头说明；
+  # 由于 All Enabled=false，只有下面显式列出的帧会被绘制。
   - Class: rviz_default_plugins/TF
     Enabled: true
     Filter (blacklist): ''
@@ -90,6 +119,8 @@ Visualization Manager:
     Tree: {}
     Update Interval: 0
     Value: true
+  # 机器人模型：从 /robot_description（Transient Local，保证晚启动也能拿到）读取 URDF，
+  # 结合 TF 显示整车外形；Description Source=Topic 表示不依赖本地模型文件。
   - Alpha: 1
     Class: rviz_default_plugins/RobotModel
     Collision Enabled: false
@@ -124,6 +155,9 @@ Visualization Manager:
       Value: true
     Axis: Z
     Channel Name: intensity
+    # 激光扫描：订阅 lidar_relay 中继后的 /scan（frame_id=lidar_link），
+    # Best Effort + Volatile（扫描频率高、体积小，允许丢帧）。
+    # 默认 Enabled=false，与 SLAM 同时用时再打开。
     Class: rviz_default_plugins/LaserScan
     Color: 255; 255; 255
     Color Transformer: Intensity
@@ -158,6 +192,8 @@ Visualization Manager:
       Value: true
     Axis: Z
     Channel Name: intensity
+    # 点云：订阅 /cloud_registered。当前工程没有节点发布该话题
+    # （rtabmap 的地图点云话题是 /rtabmap/cloud_map），属模板残留，默认关闭。
     Class: rviz_default_plugins/PointCloud2
     Color: 255; 255; 255
     Color Transformer: ''
@@ -186,6 +222,8 @@ Visualization Manager:
   - Alpha: 1
     Binary representation: false
     Binary threshold: 100
+    # 栅格地图：订阅 rtabmap 输出的 /map（Transient Local，重连时能补发历史地图）；
+    # Update Topic 的 /map_updates 当前工程未发布。默认关闭。
     Class: rviz_default_plugins/Map
     Color Scheme: map
     Draw Behind: true
@@ -208,6 +246,7 @@ Visualization Manager:
     Value: false
   - Alpha: 1
     Buffer Length: 1
+    # 路径：订阅 /path。当前工程没有导航/路径规划节点发布该话题，默认关闭。
     Class: rviz_default_plugins/Path
     Color: 255; 0; 0
     Enabled: false
@@ -234,6 +273,9 @@ Visualization Manager:
       Reliability Policy: Reliable
       Value: /path
     Value: false
+  # 相机画面：订阅 camera_relay 中继后的 /camera/image，
+  # 必须用 Best Effort——原始 RELIABLE 图像一旦下游消费不及时会堵死队列；
+  # 默认开启，是查看车头视角的主要窗口。
   - Class: rviz_default_plugins/Image
     Enabled: true
     Max Value: 1
@@ -250,10 +292,14 @@ Visualization Manager:
     Value: true
   Enabled: true
   Global Options:
+    # 背景色为深灰；Fixed Frame 是全局参考坐标系，
+    # maze_bot/odom 由 Gazebo DiffDrive 插件提供（TF: maze_bot/odom -> base_footprint）
     Background Color: 48; 48; 48
     Fixed Frame: maze_bot/odom
   Name: root
   Tools:
+  # 工具栏：交互/移动相机/选择/聚焦/测距，以及发布初始位姿、目标点、点的工具；
+  # SetInitialPose 与 SetGoal 发布的话题分别为 /initialpose、/goal_pose
   - Class: rviz_default_plugins/Interact
     Hide Inactive Objects: true
   - Class: rviz_default_plugins/MoveCamera
@@ -269,6 +315,7 @@ Visualization Manager:
     Topic: /clicked_point
   Value: true
   Views:
+    # 当前视角为轨道相机（Orbit），俯角 45°、距离 10m，绕 Fixed Frame 旋转
     Current:
       Class: rviz_default_plugins/Orbit
       Distance: 10

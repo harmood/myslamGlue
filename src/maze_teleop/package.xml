@@ -1,5 +1,12 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  maze_teleop 包的元信息（ROS 2 package format 3）。
+
+  本包是纯 Python 包（ament_python）：提供 maze_bot 的键盘遥控节点，
+  支持终端（kitty/兼容）与全局键盘（evdev）三种输入后端，发布 /cmd_vel 与
+  /steering_position，并通过话题与 GUI、相机中继、SLAM 管理器联动。
+-->
 <package format="3">
   <name>maze_teleop</name>
   <version>0.1.0</version>
@@ -7,15 +14,22 @@
   <maintainer email="ghb@todo.todo">ghb</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- 构建工具：ament_python 表示用 Python 方式构建（配合 setup.py/setup.cfg） -->
   <buildtool_depend>ament_python</buildtool_depend>
 
+  <!-- 运行期依赖 -->
+  <!-- 客户端库：节点、话题订阅与发布 -->
   <exec_depend>rclpy</exec_depend>
+  <!-- 消息类型：/cmd_vel（Twist）依赖 geometry_msgs -->
   <exec_depend>geometry_msgs</exec_depend>
+  <!-- 启动系统：teleop.launch.py 用到的 launch 与 launch_ros -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <!-- 被遥控的机器人包：URDF 关节命名、底盘控制等与之对应 -->
   <exec_depend>maze_bot</exec_depend>
 
   <export>
+    <!-- 声明构建类型为 ament_python，供 colcon 选择构建方式 -->
     <build_type>ament_python</build_type>
   </export>
 </package>

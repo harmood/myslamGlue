@@ -1,26 +1,41 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<!--
+  maze_bot 包的元信息（ROS 2 package format 3）。
+
+  本包内容：四轮小车的 URDF 模型、Gazebo 桥接配置、RViz 配置、启动文件，
+  以及 camera_relay / lidar_relay 两个传感器中继脚本；
+  不含需要编译的代码，因此只需 buildtool_depend 一个构建工具依赖。
+-->
 <package format="3">
   <name>maze_bot</name>
   <version>0.1.0</version>
   <description>Four-wheeled car robot description for maze SLAM</description>
+  <!-- 维护者与许可证信息：发布到公共仓库前需改成真实邮箱/许可证 -->
   <maintainer email="ghb@todo.todo">ghb</maintainer>
   <license>Apache-2.0</license>
 
+  <!-- 构建工具：提供 ament_package()、ament 环境与安装规则 -->
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <!-- 以下均为运行期依赖（exec_depend），缺任何一个都会让对应 launch 报错 -->
+  <!-- 模型与显示链路：URDF 解析、TF 发布、关节状态、RViz 及其显示插件 -->
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>joint_state_publisher</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>rviz_default_plugins</exec_depend>
+  <!-- 启动系统：launch 提供框架，launch_ros 提供 Node 等 ROS 专用动作 -->
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <!-- xacro：把 .urdf.xacro 展开为 URDF -->
   <exec_depend>xacro</exec_depend>
+  <!-- 仿真链路：迷宫世界、Gazebo 启动与模型生成、话题桥接 -->
   <exec_depend>maze_world</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
 
   <export>
+    <!-- 声明构建类型为 ament_cmake，供 colcon 选择构建方式 -->
     <build_type>ament_cmake</build_type>
   </export>
 </package>
