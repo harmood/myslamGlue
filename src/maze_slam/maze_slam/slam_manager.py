@@ -106,8 +106,17 @@ class SlamManager(Node):
         return default_map_dir()
 
     def call_service(self, client):
-        if client.service_is_ready():
-            client.call_async(Empty.Request())
+        if not client.service_is_ready():
+            return
+        future = client.call_async(Empty.Request())
+        future.add_done_callback(
+            lambda f: self.log_service_failure(f, client.srv_name))
+
+    def log_service_failure(self, future, srv_name):
+        """记录暂停/恢复服务的调用失败，否则操作静默失效、用户无从得知。"""
+        exc = future.exception()
+        if exc is not None:
+            self.get_logger().error(f'调用服务 {srv_name} 失败：{exc}')
 
     def make_camera_info(self, header, frame_id):
         focal = (self.width / 2.0) / math.tan(self.hfov / 2.0)
