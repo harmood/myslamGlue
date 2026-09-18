@@ -31,6 +31,7 @@ CONTROLS = [
     ('F12', '暂停 / 恢复遥控'),
     ('+ / -', '加快 / 减慢速度'),
     ('c', '相机开关'),
+    ('m', 'SLAM 建图开关'),
     ('q', '退出遥控（终端）'),
     ('按钮 / E', '窗口内开启 / 暂停遥控'),
 ]
@@ -46,6 +47,7 @@ STATUS_ROWS = [
     ('cmd', '指令线速度 (m/s)'),
     ('cmd_omega', '指令角速度 (rad/s)'),
     ('camera', '相机'),
+    ('slam', 'SLAM 建图'),
 ]
 
 USAGE_LINES = [
@@ -72,6 +74,8 @@ class RobotState(Node):
         self.teleop_stamp = 0.0
         self.camera_enabled = None
         self.camera_stamp = 0.0
+        self.slam_enabled = None
+        self.slam_stamp = 0.0
         self.running = True
 
         self.create_subscription(Odometry, '/odom', self.on_odom, 10)
@@ -81,7 +85,9 @@ class RobotState(Node):
         self.create_subscription(Twist, '/cmd_vel', self.on_cmd_vel, 10)
         self.create_subscription(Bool, '/teleop_state', self.on_teleop_state, 10)
         self.create_subscription(Bool, '/camera_state', self.on_camera_state, 10)
+        self.create_subscription(Bool, '/slam_state', self.on_slam_state, 10)
         self.enable_pub = self.create_publisher(Bool, '/teleop_enable', 10)
+        self.slam_pub = self.create_publisher(Bool, '/slam_enable', 10)
 
     def on_odom(self, msg):
         self.x = msg.pose.pose.position.x
@@ -119,6 +125,21 @@ class RobotState(Node):
 
     def camera_connected(self):
         return (time.monotonic() - self.camera_stamp) < 2.0
+
+    def on_slam_state(self, msg):
+        self.slam_enabled = bool(msg.data)
+        self.slam_stamp = time.monotonic()
+
+    def slam_connected(self):
+        return (time.monotonic() - self.slam_stamp) < 2.0
+
+    def toggle_slam(self):
+        target = True
+        if self.slam_connected() and self.slam_enabled is not None:
+            target = not self.slam_enabled
+        msg = Bool()
+        msg.data = target
+        self.slam_pub.publish(msg)
 
     def connected(self):
         return (time.monotonic() - self.odom_stamp) < 1.0
@@ -212,6 +233,9 @@ class DashboardApp:
         self.toggle_button = ttk.Button(header, text='开启遥控',
                                         command=self.node.toggle_teleop)
         self.toggle_button.pack(side='right')
+        self.slam_button = ttk.Button(header, text='开始建图',
+                                      command=self.node.toggle_slam)
+        self.slam_button.pack(side='right', padx=(0, 6))
 
         style = ttk.Style(self.root)
         row_height = self.ui_font.metrics('linespace') + 8
@@ -293,6 +317,14 @@ class DashboardApp:
             self.set_row('camera', '未连接')
         else:
             self.set_row('camera', '开启' if node.camera_enabled else '关闭')
+        if not node.slam_connected():
+            self.set_row('slam', '未连接')
+            self.slam_button.configure(text='开始建图', state='disabled')
+        else:
+            self.set_row('slam', '建图中' if node.slam_enabled else '已停止')
+            self.slam_button.configure(
+                text='停止建图' if node.slam_enabled else '开始建图',
+                state='normal')
 
         self.root.after(100, self.update)
 

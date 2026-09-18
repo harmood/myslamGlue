@@ -9,7 +9,7 @@ install(
 )
 
 install(
-  PROGRAMS scripts/camera_relay.py
+  PROGRAMS scripts/camera_relay.py scripts/lidar_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

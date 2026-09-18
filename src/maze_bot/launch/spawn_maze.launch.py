@@ -70,6 +70,14 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
+    lidar_relay = Node(
+        package='maze_bot',
+        executable='lidar_relay.py',
+        name='lidar_relay',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument(
             'model',
@@ -84,5 +92,6 @@ def generate_launch_description():
         robot_state_publisher,
         bridge,
         camera_relay,
+        lidar_relay,
         TimerAction(period=3.0, actions=[spawn_robot]),
     ])

@@ -6,6 +6,8 @@
 - `maze_bot`：四轮小车描述与仿真（前轮转向 + 后轮驱动、里程计、TF、ROS-Gazebo 话题桥接）
 - `maze_teleop`：键盘遥控节点（全局键盘模式 / 终端模式）
 - `maze_gui`：GUI 控制台（操控说明 + 小车实时状态）
+- `maze_slam`：视觉 SLAM（RTAB-Map RGB-D），支持开关建图并把地图保存到 `resources/maps/`
+- `maze_tools`：工具包（采集每次 quickstart 运行的 ERROR 日志到 `resources/logs/`）
 
 ## 地图规格
 
@@ -20,7 +22,7 @@
 | 终点 | (4.80, 4.80)，红色圆标 |
 | 坐标原点 | 地图中心 |
 
-迷宫由递归回溯算法生成，再随机打通 8% 的墙体形成环路；生成脚本内置 BFS 校验，保证起点到终点至少存在一条通路。
+迷宫为**固定布局**：在生成脚本中以 ASCII 图案显式定义（不使用随机或迷宫生成算法），每次生成结果完全一致；脚本内置通路校验，保证起点到终点至少存在一条通路。
 
 ## 目录结构
 
@@ -51,7 +53,8 @@ myslam_ws/
         ├── rviz/
         │   └── maze_bot.rviz
         ├── scripts/
-        │   └── camera_relay.py      # 相机中继（开关控制）
+        │   ├── camera_relay.py      # 相机中继（开关控制）
+        │   └── lidar_relay.py       # 激光雷达中继（帧名规范化，常开）
         └── urdf/
             └── maze_bot.urdf.xacro
     └── maze_teleop/
@@ -61,13 +64,28 @@ myslam_ws/
         │   └── teleop.launch.py     # 键盘遥控启动文件
         └── maze_teleop/
             └── teleop_keyboard.py   # 键盘遥控节点
-    └── maze_gui/
+    ├── maze_gui/
+    │   ├── package.xml
+    │   ├── setup.py
+    │   ├── launch/
+    │   │   └── dashboard.launch.py  # GUI 控制台启动文件
+    │   └── maze_gui/
+    │       └── dashboard.py         # 操控说明 + 小车状态窗口
+    ├── maze_slam/
+    │   ├── package.xml
+    │   ├── setup.py
+    │   ├── launch/
+    │   │   └── slam.launch.py       # 视觉 SLAM（RTAB-Map）启动文件
+    │   └── maze_slam/
+    │       └── slam_manager.py      # 建图开关、相机内参、地图保存
+    └── maze_tools/
         ├── package.xml
         ├── setup.py
-        ├── launch/
-        │   └── dashboard.launch.py  # GUI 控制台启动文件
-        └── maze_gui/
-            └── dashboard.py         # 操控说明 + 小车状态窗口
+        └── maze_tools/
+            └── log_filter.py        # quickstart 运行日志过滤器（ERROR）
+└── resources/
+    ├── maps/                        # 资源目录：栅格地图(pgm/yaml)、点云(pcd)、rtabmap.db
+    └── logs/                        # 运行日志：quickstart_<时间戳>.log（仅 ERROR）
 ```
 
 ## 环境要求
@@ -82,7 +100,9 @@ myslam_ws/
 ./quickstart.sh
 ```
 
-一条命令启动全部功能：自动 source ROS 环境、编译四个功能包，然后启动迷宫世界、生成小车、打开 RViz 和话题桥接，并启动键盘遥控节点（全局键盘模式，无需聚焦终端）与 GUI 状态窗口。操控方式：`w/s` 前后、`a/d` 前轮转向、空格急停、`F12` 暂停/恢复，`Ctrl+C` 一键优雅关闭全部（遥控会先归零并回正）。
+一条命令启动全部功能：自动 source ROS 环境、编译全部功能包，然后启动迷宫世界、生成小车、打开 RViz 和话题桥接，并启动键盘遥控节点（全局键盘模式，无需聚焦终端）、GUI 状态窗口与视觉 SLAM。操控方式：`w/s` 前后、`a/d` 前轮转向、空格急停、`F12` 暂停/恢复，`Ctrl+C` 一键优雅关闭全部（遥控会先归零并回正）。
+
+每次运行都会把 **ERROR 级别的日志**保存到 `resources/logs/quickstart_<时间戳>.log`（由 `maze_tools` 提供：所有控制台输出原样显示，同时过滤出错误写入文件，含开始/结束时间与运行命令），便于事后排查。日志过滤器在 Ctrl+C 关闭过程中保持运行，因此关闭提示能正常显示，不会因管道中断而丢失。
 
 可选参数：
 
@@ -90,6 +110,7 @@ myslam_ws/
 ./quickstart.sh --no-build       # 跳过编译，直接启动
 ./quickstart.sh --no-teleop      # 不启动键盘遥控
 ./quickstart.sh --no-gui         # 不启动 GUI 状态窗口
+./quickstart.sh --no-slam        # 不启动视觉 SLAM 建图
 ./quickstart.sh --world-only     # 只启动迷宫世界（不生成小车、不启动遥控/GUI）
 ./quickstart.sh --help           # 查看帮助
 ```
@@ -116,6 +137,8 @@ ros2 launch maze_gui dashboard.launch.py         # 终端 3：GUI 控制台（�
 | 轮距 / 轴距 | 0.28 m / 0.30 m |
 | 前轮最大转角 | ±0.6 rad（遥控默认限幅 0.5 rad） |
 | 车头相机 | 640×480 @ 15 Hz，水平 FOV 60°，安装于车头 (0.19, 0, 0.02) |
+| 顶部激光雷达 | 蓝色圆柱（半径 0.03 m、高 0.04 m），360 线 @ 10 Hz，量程 0.12–10 m，安装于车顶 (0, 0, 0.07)，常开 |
+| 深度相机 | 640×480 @ 10 Hz，与车头相机同位姿（RGB-D 视觉 SLAM 用） |
 | 生成位置 | 起点 (-4.80, -4.80)，朝向 +x |
 | 后轮驱动插件 | `gz-sim-diff-drive-system`（仅后轮） |
 | 前轮转向插件 | `gz-sim-joint-position-controller-system` |
@@ -133,6 +156,16 @@ ROS 话题（经 `config/ros_gz_bridge.yaml` 桥接）：
 | `/camera/image` | `sensor_msgs/msg/Image` | 中继转发 | 相机中继输出（受相机开关控制），RViz 显示用 |
 | `/camera_enable` | `std_msgs/msg/Bool` | ROS 内部 | 相机开关指令（true 开 / false 关） |
 | `/camera_state` | `std_msgs/msg/Bool` | ROS 内部 | 相机开关状态（每秒上报） |
+| `/lidar/scan_raw` | `sensor_msgs/msg/LaserScan` | Gazebo → ROS | 激光雷达原始扫描（360 线 @ 10 Hz，常开） |
+| `/scan` | `sensor_msgs/msg/LaserScan` | 中继转发 | 雷达中继输出（frame `lidar_link`，常开） |
+| `/camera/depth_image` | `sensor_msgs/msg/Image` | Gazebo → ROS | 深度图像（32FC1，10 Hz） |
+| `/slam/image` | `sensor_msgs/msg/Image` | SLAM 管理器 | 供 RTAB-Map 使用的图像（开启建图时才有，frame `camera_link`） |
+| `/slam/depth_image` | `sensor_msgs/msg/Image` | SLAM 管理器 | 供 RTAB-Map 使用的深度图（开启建图时才有） |
+| `/slam/camera_info`、`/slam/depth_camera_info` | `sensor_msgs/msg/CameraInfo` | SLAM 管理器 | 相机内参（按 60° FOV 计算） |
+| `/slam_enable` | `std_msgs/msg/Bool` | ROS 内部 | 建图开关（true 开始 / false 停止并保存） |
+| `/slam_state` | `std_msgs/msg/Bool` | ROS 内部 | 建图状态（每秒上报） |
+| `/map` | `nav_msgs/msg/OccupancyGrid` | RTAB-Map | 视觉 SLAM 生成的栅格地图 |
+| `/rtabmap/cloud_map` | `sensor_msgs/msg/PointCloud2` | RTAB-Map | 三维点云地图 |
 | `/clock` | `rosgraph_msgs/msg/Clock` | Gazebo → ROS | 仿真时钟 |
 
 驱动示例：
@@ -206,6 +239,7 @@ ros2 launch maze_teleop teleop.launch.py input_mode:=terminal
 | `a` / ← | 前轮左转向 | `d` / → | 前轮右转向 |
 | 空格 | 立即停止 | `q` | 退出 |
 | `+` / `-` | 加快 / 减慢速度 | `c` | 相机开关 |
+| `m` | 开始 / 停止 SLAM 建图 | | |
 
 `a`/`d` 直接控制前轮转向关节：按住时转角平滑转到最大角（默认 0.5 rad，速率 2.0 rad/s），松开自动回正；与 `w`/`s` 组合即为弧线行驶。转向角与后轮差速的换算由遥控节点按轴距自动完成。
 
@@ -253,7 +287,7 @@ ros2 launch maze_gui dashboard.launch.py
 - **操控方法**：完整按键说明（前后、转向、急停、F12 暂停、调速、退出、GUI 遥控开关）与常用启动命令
 - **遥控开关**：右上角按钮（或窗口内按 `E` 键）可开启 / 暂停遥控，状态显示"已开启 / 已暂停 / 未连接"，也可用 `F12` 全局切换。开关通过 `/teleop_enable`（`std_msgs/msg/Bool`）下发，遥控节点以 `/teleop_state` 每秒上报当前状态
 - **小车状态**（约 10 Hz 刷新，以表格形式展示；窗口启动时按内容自动定尺并居中，无需手动调整大小）：
-  - 表格行：线速度、角速度、位置 (x, y)、航向角、前轮转角、转角指令、四轮轮速、指令线速度、指令角速度、相机开关状态
+  - 表格行：线速度、角速度、位置 (x, y)、航向角、前轮转角、转角指令、四轮轮速、指令线速度、指令角速度、相机开关状态、SLAM 建图状态
   - 表格上方状态：仿真连接状态（依据 `/odom` 是否在 1 秒内更新）、遥控状态与开关按钮
 
 订阅话题：`/odom`、`/joint_states`、`/steering_position`、`/cmd_vel`、`/teleop_state`；发布 `/teleop_enable`。
@@ -263,8 +297,34 @@ ros2 launch maze_gui dashboard.launch.py
 - 主场景（`spawn_maze.launch.py`）会同时启动 RViz，使用 `maze_world/rviz/maze.rviz`；单独查看小车模型用 `maze_bot display.launch.py`（`maze_bot.rviz`，固定坐标系 `base_footprint`）
 - 主场景 RViz 的固定坐标系为 `maze_bot/odom`（当前 TF 树中实际存在的坐标系）
 - Grid / TF / RobotModel / Camera 默认启用（Camera 为车头相机实时画面，话题 `/camera/image`）；LaserScan、PointCloud2、Map、Path 已预配置好话题
-- 相机渲染在启动后需要数十秒初始化（本机为软件渲染），期间 Camera 显示暂无画面，稍候即可（`/scan`、`/cloud_registered`、`/map`、`/path`）但**默认禁用**，避免数据源未就绪时报错；接入传感器或 SLAM 后在 Displays 面板勾选启用即可
+- 相机渲染在启动后需要数十秒初始化（本机为软件渲染），期间 Camera 显示暂无画面，稍候即可
+- 激光雷达对应 LaserScan 显示（话题 `/scan`）：默认禁用；按 `l` 开启雷达后在 Displays 面板勾选 LaserScan 即可查看
+
+Gazebo 侧的雷达可视化：**世界文件通过 `<gui>` 标签完整描述了 GUI 布局**（3D 视图、悬浮工具栏、右侧 World/Entity Tree、右下角 Visualize Lidar 面板），因此每次启动 Gazebo 都会自动打开 Visualize Lidar 面板，且**不修改用户级配置 `~/.gz/sim/8/gui.config`**。面板打开后在顶部下拉框中点击橙色刷新按钮并选择 `/lidar/scan_raw` 即可实时显示扫描点。
+
+注意：由于布局由世界文件决定，在 Gazebo 里手动调整的窗口布局不会被保存/沿用（重启后回到世界文件定义的布局）。
+
+激光雷达为**常开**状态（`always_on=1`、`visualize=true`）：世界中会绘制扫描光束，`/lidar/scan_raw` 经常驻桥接进入 ROS，中继节点将其帧名规范化为 `lidar_link` 后发布到 `/scan`（供 RViz/SLAM 使用）。雷达没有开关；相机开关（`c` 键）保持独立。
+
+注意：`l` 开关控制的是 ROS 侧数据流（`/scan`，供 RViz/SLAM 使用）；Gazebo 的 Visualize Lidar 面板直接订阅 gazebo 传感器话题，因此即使把雷达"关闭"，面板仍会显示扫描——两者是独立的。（`/scan`、`/cloud_registered`、`/map`、`/path`）但**默认禁用**，避免数据源未就绪时报错；接入传感器或 SLAM 后在 Displays 面板勾选启用即可
 - 接入 SLAM 后可将 Fixed Frame 切换为 `map`
+
+## 视觉 SLAM（maze_slam）
+
+基于 **RTAB-Map（RGB-D 模式）** 的视觉 SLAM：使用车头相机 + 深度相机进行视觉里程与建图，生成二维栅格地图与三维点云。
+
+- 启动：`quickstart.sh` 已自动启动 SLAM（`--no-slam` 可关闭），也可单独运行 `ros2 launch maze_slam slam.launch.py`
+- **开关建图**：遥控按 `m` 键，或 GUI 控制台的"开始建图 / 停止建图"按钮；对应话题 `/slam_enable`，状态在 `/slam_state`
+  - 开启时：SLAM 管理器把相机与深度图转发给 RTAB-Map（并发布相机内参）
+  - 停止时：暂停 RTAB-Map 并**自动保存地图**
+- 保存内容（目录 `resources/maps/`，工作区根目录下专门存放资源的文件夹）：
+  - `maze_map_<时间戳>.pgm/.yaml`：二维栅格地图（nav2 可直接加载）
+  - `maze_cloud_<时间戳>.pcd`：三维点云地图（有数据时）
+  - `rtabmap.db`：RTAB-Map 数据库（建图过程中实时写入）
+- 也可以手动触发保存：`ros2 service call /slam_manager/save_map std_srvs/srv/Trigger "{}"`
+- RViz 中查看：开启建图后勾选 Map 显示（话题 `/map`）或 PointCloud2（`/rtabmap/cloud_map`）
+
+注意：视觉 SLAM 依赖相机的图像与深度，默认输出频率较低（RTAB-Map 约 2Hz 处理）；本机为软件渲染，启动后需等待相机初始化完成再开始建图效果更好。
 
 ## 关闭方式
 
@@ -279,17 +339,13 @@ ros2 launch maze_gui dashboard.launch.py
 
 ## 重新生成迷宫
 
+世界文件由固定布局生成，脚本只负责把布局转换为 SDF（结果每次一致）：
+
 ```bash
 python3 src/maze_world/scripts/generate_maze.py \
-  --size 9 --seed 20260915 --loops 0.08 \
   --output src/maze_world/worlds/maze.world
 ```
 
-| 参数 | 默认值 | 说明 |
-| --- | --- | --- |
-| `--size` | 9 | 每边单元格数，地图边长 = (size-1)×1.2 + 1.4 m |
-| `--seed` | 20260915 | 随机种子，固定种子可复现同一迷宫 |
-| `--loops` | 0.08 | 额外打通墙体的比例（0 为完美迷宫，无环路） |
-| `--output` | maze.world | 输出文件路径 |
+**修改地图**：直接编辑 `src/maze_world/scripts/generate_maze.py` 中的 `FIXED_LAYOUT` ASCII 图案即可（`+`、`-`、`|` 为墙壁，空格为通道，`S` 起点、`G` 终点），保存后重新运行上面的命令。图案尺寸需为 (2n+1) × (2n+1) 的正方形，脚本会校验合法性并验证起终点连通。
 
 包以 `--symlink-install` 方式编译，重新生成世界后无需再次编译，直接重新启动即可生效。

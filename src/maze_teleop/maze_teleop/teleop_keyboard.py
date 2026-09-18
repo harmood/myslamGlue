@@ -26,7 +26,7 @@ HELP = """
   前后移动： w / ↑ 前进      s / ↓ 后退
   前轮转向： a / ← 左转      d / → 右转
   空格 立即停止          q 退出
-  + / - 加快 / 减慢速度   c 相机开关
+  + / - 加快 / 减慢速度   c 相机开关   m SLAM建图开关
 --------------------------------------------------"""
 
 KITTY_FLAGS = 11  # disambiguate(1) | report event types(2) | report all keys(8)
@@ -49,6 +49,10 @@ EVDEV_ANGULAR = {30: 1.0, 105: 1.0, 32: -1.0, 106: -1.0}   # a/left, d/right
 EVDEV_SPEED_UP = {13, 78}         # = keypad-plus
 EVDEV_SPEED_DOWN = {12, 74}       # - keypad-minus
 EVDEV_SPACE = 57
+# 修饰键（Ctrl/Alt/Super/Shift）：组合键不应触发单键功能。
+# 全局键盘模式下，Ctrl+C、Ctrl+M 等组合键会被拆成普通按键上报，
+# 若不加区分，Ctrl+C（终端中断）会被误当成“相机开关”。
+EVDEV_MODIFIERS = {29, 97, 56, 100, 125, 126, 42, 54}
 
 
 def _has_bit(bitmask, code):
@@ -133,6 +137,8 @@ class MazeTeleop(Node):
         self.declare_parameter('state_topic', '/teleop_state')
         self.declare_parameter('camera_enable_topic', '/camera_enable')
         self.declare_parameter('camera_state_topic', '/camera_state')
+        self.declare_parameter('slam_enable_topic', '/slam_enable')
+        self.declare_parameter('slam_state_topic', '/slam_state')
 
         self.linear_speed = float(self.get_parameter('linear_speed').value)
         self.max_steering = float(self.get_parameter('max_steering').value)
@@ -145,6 +151,7 @@ class MazeTeleop(Node):
         self.arm_key = int(self.get_parameter('arm_key').value)
         self.armed = True
         self.evdev = False
+        self.modifiers = set()
 
         self.delay, self.interval = detect_repeat_settings()
         auto_hold = self.delay + 0.12 if self.delay else 0.7
@@ -169,6 +176,12 @@ class MazeTeleop(Node):
             Bool, self.get_parameter('camera_state_topic').value,
             self.on_camera_state, 10)
         self.camera_enabled = True
+        self.slam_enable_publisher = self.create_publisher(
+            Bool, self.get_parameter('slam_enable_topic').value, 10)
+        self.create_subscription(
+            Bool, self.get_parameter('slam_state_topic').value,
+            self.on_slam_state, 10)
+        self.slam_enabled = False
         self.create_timer(1.0, self.publish_state)
         self.twist = Twist()
         self.linear_cmd = 0.0
@@ -280,6 +293,17 @@ class MazeTeleop(Node):
     def on_camera_state(self, msg):
         self.camera_enabled = bool(msg.data)
 
+    def on_slam_state(self, msg):
+        self.slam_enabled = bool(msg.data)
+
+    def toggle_slam(self):
+        self.slam_enabled = not self.slam_enabled
+        msg = Bool()
+        msg.data = self.slam_enabled
+        self.slam_enable_publisher.publish(msg)
+        self.get_logger().info(
+            'SLAM 建图已开启' if self.slam_enabled else 'SLAM 建图已关闭')
+
     def toggle_camera(self):
         self.camera_enabled = not self.camera_enabled
         msg = Bool()
@@ -331,6 +355,8 @@ class MazeTeleop(Node):
             self.move_legacy('angular', -1.0)
         elif char in ('c', 'C', '\uff43', '\uff23'):
             self.toggle_camera()
+        elif char in ('m', 'M', '\uff4d', '\uff2d'):
+            self.toggle_slam()
         elif char in (' ', '\u3000'):
             self.stop_all()
         elif char in ('+', '=', '\uff0b', '\uff1d'):
@@ -353,6 +379,8 @@ class MazeTeleop(Node):
             return
         if keycode == 99 and pressed:
             self.toggle_camera()
+        elif keycode == 109 and pressed:
+            self.toggle_slam()
         elif keycode in LINEAR_KEYS:
             self.move_kitty('linear', keycode, LINEAR_KEYS[keycode], pressed)
         elif keycode in ANGULAR_KEYS:
@@ -370,6 +398,13 @@ class MazeTeleop(Node):
         if value == 2:
             return
         pressed = value == 1
+        if code in EVDEV_MODIFIERS:
+            if pressed:
+                self.modifiers.add(code)
+            else:
+                self.modifiers.discard(code)
+            return
+        plain = pressed and not self.modifiers
         if code == self.arm_key and pressed:
             self.set_armed(not self.armed)
             return
@@ -379,13 +414,15 @@ class MazeTeleop(Node):
             self.move_kitty('linear', code, EVDEV_LINEAR[code], pressed)
         elif code in EVDEV_ANGULAR:
             self.move_kitty('angular', code, EVDEV_ANGULAR[code], pressed)
-        elif code == 46 and pressed:
+        elif code == 46 and plain:
             self.toggle_camera()
+        elif code == 50 and plain:
+            self.toggle_slam()
         elif code == EVDEV_SPACE and pressed:
             self.stop_all()
-        elif code in EVDEV_SPEED_UP and pressed:
+        elif code in EVDEV_SPEED_UP and plain:
             self.scale_speed(1.25)
-        elif code in EVDEV_SPEED_DOWN and pressed:
+        elif code in EVDEV_SPEED_DOWN and plain:
             self.scale_speed(0.8)
 
     def feed(self, data):

@@ -3,3 +3,6 @@ install/
 log/
 __pycache__/
 *.pyc
+
+# 运行产物：地图、rtabmap 数据库与启动日志不纳入版本管理
+resources/
