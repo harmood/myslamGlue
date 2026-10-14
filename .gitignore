@@ -4,5 +4,7 @@ log/
 __pycache__/
 *.pyc
 
-# 运行产物：地图、rtabmap 数据库与启动日志不纳入版本管理
-resources/
+# 运行产物：rtabmap 数据库、点云与运行日志不纳入版本管理，保留少量示例栅格地图
+resources/maps/*.db
+resources/maps/*.pcd
+resources/logs/*.log
